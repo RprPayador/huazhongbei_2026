@@ -1,0 +1,9 @@
+# Windows temporary files
+~$*
+
+# MS Office temporary files
+*.tmp
+
+# Common junk
+.DS_Store
+Thumbs.db
