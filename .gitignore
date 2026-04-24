@@ -6,4 +6,7 @@
 
 # Common junk
 .DS_Store
-Thumbs.db
+Thumbs.
+
+# obsidian config
+.obsidian
