@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 from VRTPW_class import Vehicle, Customer, Order, Route
+from ALNS_tools import Solution
 
 def time_to_minutes(time_str):
     """将时间字符串 (如 '8:30') 转换为分钟数"""
@@ -61,16 +62,19 @@ def init_vehicles():
         (1250, 8.5, 15)   # type_id 5
     ]
     
+    id = 0
     for type_idx, (weight, volume, count) in enumerate(configs, 1):
-        for _ in range(count):
+        for i in range(count):
             # 实例化每一辆车，只传入类定义的参数
             v = Vehicle(
+                id=id,
                 type_id=type_idx,
                 capacity_weight=weight,
                 capacity_volume=volume,
                 start_cost=400
             )
             vehicle_pool.append(v)
+            id += 1
             
     return vehicle_pool
 
@@ -118,6 +122,9 @@ def init_data(base_dir):
     return customer_pool, order_pool, vehicle_pool, dist_matrix
 
 if __name__ == "__main__":
-    BASE_DIR = r'd:\华中杯\A题：城市绿色物流配送调度\附件'
+    BASE_DIR = r'.\A题：城市绿色物流配送调度\附件'
     customers, orders, vehicles, distances = init_data(BASE_DIR)
-    print('ok')
+    solution = Solution()
+    solution.initSolution(vehicles, customers, orders, distances)
+
+    print('\nok')
