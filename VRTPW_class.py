@@ -41,5 +41,11 @@ class Route:
         self.orders = []
         self.distance = []
         self.vehicle : Vehicle = vehicle
+    def __init__(self, vehicle):
+        self.nodes = []
+        self.times = []
+        self.orders = []
+        self.length = []
+        self.vehicle = vehicle
         self.cost = 0
 
