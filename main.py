@@ -11,43 +11,6 @@ def time_to_minutes(time_str):
         return h * 60 + m
     return 0
 
-def init_data(base_dir):
-    print("正在初始化数据...")
-    
-    # 1. 读取客户和时间窗信息并合并
-    df_coords = pd.read_excel(os.path.join(base_dir, '客户坐标信息.xlsx'))
-    df_tw = pd.read_excel(os.path.join(base_dir, '时间窗.xlsx'))
-    
-    # 合并坐标和时间窗 (Left join，因为中心点 ID 0 可能没在时间窗表里)
-    df_customer_info = pd.merge(df_coords, df_tw, left_on='ID', right_on='客户编号', how='left')
-    
-    customer_pool = {}
-    for _, row in df_customer_info.iterrows():
-        cid = int(row['ID'])
-        # 转换为分钟元组 (开始, 结束)
-        tw = (time_to_minutes(row['开始时间']), time_to_minutes(row['结束时间']))
-        # 配送中心默认全天可用
-        if cid == 0: tw = (0, 1440)
-        
-        customer_pool[cid] = Customer(cid, row['X (km)'], row['Y (km)'], tw)
-
-    # 2. 读取订单信息
-    df_orders = pd.read_excel(os.path.join(base_dir, '订单信息.xlsx'))
-    order_pool = []
-    for _, row in df_orders.iterrows():
-        order = Order(
-            id=int(row['订单编号']),
-            customer_id=int(row['目标客户编号']),
-            weight=row['重量'],
-            volume=row['体积']
-        )
-        order_pool.append(order)
-
-    # 3. 读取距离矩阵
-    df_dist = pd.read_excel(os.path.join(base_dir, '距离矩阵.xlsx'))
-    # 转换为 Numpy 矩阵，方便后续计算
-    dist_matrix = df_dist.drop(columns=['客户']).values
-
 def init_vehicles():
     """根据题目要求初始化 185 辆车，每一辆车都是一个独立的实例"""
     vehicle_pool = []
