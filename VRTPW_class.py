@@ -4,8 +4,8 @@ class Vehicle:
     '''车辆类'''
     def __init__(self, type_id, id, capacity_weight, capacity_volume, start_cost):
         '''type: 车辆类型, 0,1,2,3,4'''
-        self.type_id = type_id # 0燃油车, 1新能源车
-        self.vehicle_id = id # 车辆自己的id
+        self.type_id = type_id
+        self.vehicle_id = id
         self.capacity_weight = capacity_weight
         self.capacity_volume = capacity_volume
         self.start_cost = start_cost
@@ -34,7 +34,7 @@ class Route:
     def __init__(self, vehicle: Vehicle):
         self.nodes = []
         self.times = []
-        self.orders = []
+        self.orders = []#列表嵌套列表
         self.distance = []
         self.vehicle : Vehicle = vehicle
         self.cost = 0
@@ -97,10 +97,12 @@ def calc_route_total_cost(route, dist_matrix, customer_pool):
     
     # 初始化状态
     t_curr = 480  # 假设 8:00 出发
-    current_load = sum(o.demand_weight for o in route.orders)
+    # 适配嵌套列表：计算所有订单的总重量
+    current_load = sum(sum(o.demand_weight for o in cust_orders) for cust_orders in route.orders)
     total_energy_cost, total_carbon_cost, total_penalty = 0, 0, 0
     route.times = [t_curr]
     
+    customer_idx = 0 # 用于追踪当前是第几个客户点
     for i in range(len(route.nodes) - 1):
         u_id, v_id = route.nodes[i], route.nodes[i+1]
         dist = dist_matrix[u_id][v_id]
@@ -117,18 +119,20 @@ def calc_route_total_cost(route, dist_matrix, customer_pool):
             cust = customer_pool[v_id]
             route.times.append(t_curr)
             
-            # 时间窗惩罚 (早到/晚到)
-            e_i, l_i = cust.timewindow
+            # 时间窗惩罚
+            e_i, l_i = cust.timewindow[0], cust.timewindow[1]
             wait = max(0, e_i - t_curr)
             late = max(0, t_curr - l_i)
             total_penalty += (wait/60)*C_WAIT + (late/60)*C_LATE
             
-            # 更新离开时间 (服务时间固定 20min)
+            # 更新离开时间
             t_curr = max(t_curr, e_i) + 20
-            # 更新载重 (卸下该客户的所有订单)
-            for order in route.orders:
-                if order.customer_id == v_id:
-                    current_load -= order.demand_weight
+            
+            # 适配嵌套列表：卸下当前客户对应的所有订单
+            # route.orders[customer_idx] 存储的是到达 v_id 时的订单列表
+            for order in route.orders[customer_idx]:
+                current_load -= order.demand_weight
+            customer_idx += 1
         else: # 回到中心
             route.times.append(t_curr)
             
@@ -137,18 +141,3 @@ def calc_route_total_cost(route, dist_matrix, customer_pool):
     return route.cost
 
 # --- 4. 关于类设计的改进建议 (建议后续重构时参考) ---
-'''
-【改进建议说明】：
-目前的类仅作为数据载体（Data Class），所有逻辑都在外部。
-如果后续代码量变大，建议进行以下重构：
-
-1.  【Vehicle 类】：增加 get_energy_params() 方法，将车型与参数的硬编码对应关系
-    移入类内部。增加 calculate_e0(velocity) 方法，实现能耗公式的自封装。
-    
-2.  【Route 类】：增加 update_metrics() 方法。目前计算成本时需要外部传入 
-    dist_matrix 和 customer_pool，如果 Route 类能持有路径节点的引用，
-    可以直接调用 route.calculate_all()。
-    
-3.  【状态解耦】：将“车辆行驶过程”抽象为一个 Segment 类，专门处理跨时段的速度切换，
-    这样能耗计算代码会更整洁，也方便测试。
-'''
