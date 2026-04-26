@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 from VRTPW_class import Vehicle, Customer, Order, Route
+from ALNS_tools import Solution
 
 def time_to_minutes(time_str):
     """将时间字符串 (如 '8:30') 转换为分钟数"""
@@ -35,11 +36,16 @@ def init_data(base_dir):
     df_orders = pd.read_excel(os.path.join(base_dir, '订单信息.xlsx'))
     order_pool = []
     for _, row in df_orders.iterrows():
+        weight = row['重量']
+        volume = row['体积']
+        if pd.isna(weight) or pd.isna(volume):
+            print(f"警告: 订单 {row['订单编号']} 含有NaN值，跳过")
+            continue
         order = Order(
             id=int(row['订单编号']),
             customer_id=int(row['目标客户编号']),
-            weight=row['重量'],
-            volume=row['体积']
+            weight=float(weight),
+            volume=float(volume)
         )
         order_pool.append(order)
 
@@ -47,6 +53,17 @@ def init_data(base_dir):
     df_dist = pd.read_excel(os.path.join(base_dir, '距离矩阵.xlsx'))
     # 转换为 Numpy 矩阵，方便后续计算
     dist_matrix = df_dist.drop(columns=['客户']).values
+
+    # 4. 初始化车辆池 (独立函数调用)
+    vehicle_pool = init_vehicles()
+
+    print(f"初始化完成：")
+    print(f"- 客户数: {len(customer_pool)}")
+    print(f"- 订单数: {len(order_pool)}")
+    print(f"- 车辆总数: {len(vehicle_pool)}")
+    print(f"- 距离矩阵维度: {dist_matrix.shape}")
+    
+    return customer_pool, order_pool, vehicle_pool, dist_matrix
 
 def init_vehicles():
     """根据题目要求初始化 185 辆车，每一辆车都是一个独立的实例"""
@@ -61,63 +78,42 @@ def init_vehicles():
         (1250, 8.5, 15)   # type_id 5
     ]
     
+    vid = 0
     for type_idx, (weight, volume, count) in enumerate(configs, 1):
-        for _ in range(count):
+        for i in range(count):
             # 实例化每一辆车，只传入类定义的参数
             v = Vehicle(
                 type_id=type_idx,
+                id=vid,
                 capacity_weight=weight,
                 capacity_volume=volume,
                 start_cost=400
             )
             vehicle_pool.append(v)
+            vid += 1
             
     return vehicle_pool
 
-def init_data(base_dir):
-    print("正在初始化数据...")
-    
-    # 1. 读取客户和时间窗信息并合并
-    df_coords = pd.read_excel(os.path.join(base_dir, '客户坐标信息.xlsx'))
-    df_tw = pd.read_excel(os.path.join(base_dir, '时间窗.xlsx'))
-    
-    df_customer_info = pd.merge(df_coords, df_tw, left_on='ID', right_on='客户编号', how='left')
-    
-    customer_pool = {}
-    for _, row in df_customer_info.iterrows():
-        cid = int(row['ID'])
-        tw = (time_to_minutes(row['开始时间']), time_to_minutes(row['结束时间']))
-        if cid == 0: tw = (0, 1440)
-        customer_pool[cid] = Customer(cid, row['X (km)'], row['Y (km)'], tw)
-
-    # 2. 读取订单信息
-    df_orders = pd.read_excel(os.path.join(base_dir, '订单信息.xlsx'))
-    order_pool = []
-    for _, row in df_orders.iterrows():
-        order = Order(
-            id=int(row['订单编号']),
-            customer_id=int(row['目标客户编号']),
-            weight=row['重量'],
-            volume=row['体积']
-        )
-        order_pool.append(order)
-
-    # 3. 读取距离矩阵
-    df_dist = pd.read_excel(os.path.join(base_dir, '距离矩阵.xlsx'))
-    dist_matrix = df_dist.drop(columns=['客户']).values
-
-    # 4. 初始化车辆池 (独立函数调用)
-    vehicle_pool = init_vehicles()
-
-    print(f"初始化完成：")
-    print(f"- 客户数: {len(customer_pool)}")
-    print(f"- 订单数: {len(order_pool)}")
-    print(f"- 车辆总数: {len(vehicle_pool)}")
-    print(f"- 距离矩阵维度: {dist_matrix.shape}")
-    
-    return customer_pool, order_pool, vehicle_pool, dist_matrix
-
 if __name__ == "__main__":
-    BASE_DIR = r'd:\华中杯\A题：城市绿色物流配送调度\附件'
+    BASE_DIR = r'.\A题：城市绿色物流配送调度\附件'
     customers, orders, vehicles, distances = init_data(BASE_DIR)
-    print('ok')
+    solution = Solution()
+    solution.initSolution(vehicles, customers, orders, distances)
+    print(f"总路径数: {len(solution.routes)}")
+    print(f"未分配订单数: {len(solution.unassignedOrders)}")
+    print(f"已分配订单数: {len(solution.order2routeMap)}")
+
+    # 车辆使用统计
+    ev_count = 0
+    fv_count = 0
+    for route in solution.routes:
+        v = route.vehicle
+        if v.type_id in [4, 5]:
+            ev_count += 1
+        else:
+            fv_count += 1
+
+    print(f"新能源车使用: {ev_count} 趟")
+    print(f"燃油车使用: {fv_count} 趟")
+
+    print('\nok')
