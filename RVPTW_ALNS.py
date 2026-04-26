@@ -71,13 +71,22 @@ class ALNS_Solver:
             delta = new_cost - old_cost
             
             score_type = 0
-            # 接受准则
-            if new_cost < self.best_sol.total_cost - 1e-3:
+            # 接受准则：层次化评价（未分配数量优先，费用其次）
+            new_unassigned = len(temp_sol.unassignedOrders)
+            best_unassigned = len(self.best_sol.unassignedOrders)
+            
+            is_global_best = False
+            if new_unassigned < best_unassigned:
+                is_global_best = True
+            elif new_unassigned == best_unassigned and new_cost < self.best_sol.total_cost - 1e-3:
+                is_global_best = True
+
+            if is_global_best:
                 # 发现全局最优
                 self.best_sol = copy.deepcopy(temp_sol)
                 self.current_sol = temp_sol
                 score_type = 1 # 奖励 theta1
-                print(f"迭代 {i}: [NEW BEST] 费用 = {new_cost:.2f}, 未分配 = {len(temp_sol.unassignedOrders)}, T = {self.T:.2f}")
+                print(f"迭代 {i}: [NEW BEST] 费用 = {new_cost:.2f}, 未分配 = {new_unassigned}, T = {self.T:.2f}")
             elif new_cost < old_cost - 1e-3:
                 # 优于当前解
                 self.current_sol = temp_sol
