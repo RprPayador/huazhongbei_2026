@@ -95,8 +95,27 @@ def calc_route_total_cost(route, dist_matrix, customer_pool):
     # 获取车辆基本参数
     v_type, alpha, gamma, p_energy = get_vehicle_constants(route.vehicle.type_id)
     
-    # 初始化状态
-    t_curr = 480  # 假设 8:00 出发
+    # 确定出发时间：
+    # 优先沿用路径原有的出发时间（times[0]），保持初始解的安排
+    # 若无记录，则按第一个客户时间窗反推：最迟出发时间 = tw_start - 行驶时间
+    # 这样可以避免过早出发白白等待
+    if route.times:
+        t_curr = route.times[0]
+    elif len(route.nodes) >= 2 and route.nodes[1] != 0:
+        first_cust_id = route.nodes[1]
+        first_dist = dist_matrix[0][first_cust_id]
+        first_cust = customer_pool.get(first_cust_id)
+        if first_cust and first_dist > 0:
+            # 估算行驶时间（用 35.4 km/h 简单估算，get_travel_info 会精确重算）
+            est_travel_min = first_dist / (35.4 / 60)
+            tw_start = first_cust.timewindow[0]
+            # 最优出发时间 = 时间窗开始 - 行驶时间，但不早于 0 点
+            t_curr = max(0, tw_start - est_travel_min)
+        else:
+            t_curr = 480
+    else:
+        t_curr = 480
+
     # 适配嵌套列表：计算所有订单的总重量
     current_load = sum(sum(o.demand_weight for o in cust_orders) for cust_orders in route.orders)
     total_energy_cost, total_carbon_cost, total_penalty = 0, 0, 0
