@@ -20,6 +20,10 @@ class Customer:
         self.x = x
         self.y = y
         self.timewindow : list[float] = timeWindow
+        if((self.x**2 + self.y**2)**0.5 <= 10):
+            self.zone = True
+        else:
+            self.zone = False
 
 class Order:
     '''订单类'''
