@@ -36,16 +36,16 @@ def init_data(base_dir):
     df_orders = pd.read_excel(os.path.join(base_dir, '订单信息.xlsx'))
     order_pool = []
     for _, row in df_orders.iterrows():
-        weight = float(row['重量'])
-        volume = float(row['体积'])
+        weight = row['重量']
+        volume = row['体积']
         if pd.isna(weight) or pd.isna(volume):
             print(f"警告: 订单 {row['订单编号']} 含有NaN值，跳过")
             continue
         order = Order(
             id=int(row['订单编号']),
             customer_id=int(row['目标客户编号']),
-            weight=weight,
-            volume=volume
+            weight=float(weight),
+            volume=float(volume)
         )
         order_pool.append(order)
 
@@ -78,19 +78,19 @@ def init_vehicles():
         (1250, 8.5, 15)   # type_id 5
     ]
     
-    id = 0
+    vid = 0
     for type_idx, (weight, volume, count) in enumerate(configs, 1):
         for i in range(count):
             # 实例化每一辆车，只传入类定义的参数
             v = Vehicle(
-                id=id,
                 type_id=type_idx,
+                id=vid,
                 capacity_weight=weight,
                 capacity_volume=volume,
                 start_cost=400
             )
             vehicle_pool.append(v)
-            id += 1
+            vid += 1
             
     return vehicle_pool
 
@@ -99,5 +99,21 @@ if __name__ == "__main__":
     customers, orders, vehicles, distances = init_data(BASE_DIR)
     solution = Solution()
     solution.initSolution(vehicles, customers, orders, distances)
+    print(f"总路径数: {len(solution.routes)}")
+    print(f"未分配订单数: {len(solution.unassignedOrders)}")
+    print(f"已分配订单数: {len(solution.order2routeMap)}")
+
+    # 车辆使用统计
+    ev_count = 0
+    fv_count = 0
+    for route in solution.routes:
+        v = route.vehicle
+        if v.type_id in [4, 5]:
+            ev_count += 1
+        else:
+            fv_count += 1
+
+    print(f"新能源车使用: {ev_count} 趟")
+    print(f"燃油车使用: {fv_count} 趟")
 
     print('\nok')
