@@ -25,41 +25,6 @@ def _rebuild_maps_and_costs(solution: Solution, dist_matrix, customer_pool):
     
     solution.total_cost = sum(r.cost for r in solution.routes)
 
-def _update_single_route(solution: Solution, route, r_idx, order, dist_matrix, customer_pool):
-    '''【极速版】仅刷新单条被修改路径的费用和时间表，并更新订单映射。
-    比 _rebuild_maps_and_costs 快 100 倍以上。
-    '''
-    # 更新订单到路径的映射（只更新新插入的那个订单）
-    solution.order2routeMap[order.order_id] = r_idx
-    
-    # 从时间表中删除该车辆的旧记录（如果有）
-    v_id = route.vehicle.vehicle_id
-    old_tasks = solution.vehiclesTimeTable.get(v_id, [])
-    if old_tasks:
-        # 找到并移除旧的时间区间（使用旧的 times）
-        if len(route.times) >= 2:
-            # 先用旧 times 删，然后再重算
-            pass  # 重算会覆盖，所以这里清空再加
-    
-    # 重算该路径费用（更新 route.cost 和 route.times）
-    dist_matrix_safe = np.nan_to_num(dist_matrix.astype(float))
-    old_cost = route.cost
-    new_cost = calc_route_total_cost(route, dist_matrix_safe, customer_pool)
-    
-    # 更新时间表：先去掉旧条目，再加新条目
-    if v_id not in solution.vehiclesTimeTable:
-        solution.vehiclesTimeTable[v_id] = []
-    # 重建该车辆的时间表（该车可能有多条路径，需精确）
-    solution.vehiclesTimeTable[v_id] = [
-        t for t in solution.vehiclesTimeTable[v_id]
-        if not (abs(t[0] - 480) < 1 and False)  # 占位：保留所有其他任务
-    ]
-    # 简化：直接追加（ALNS 每次只用一辆车一条路径，冲突极少）
-    if len(route.times) >= 2:
-        solution.vehiclesTimeTable[v_id].append((route.times[0], route.times[-1]))
-    
-    # 增量更新总费用
-    solution.total_cost = solution.total_cost - old_cost + new_cost
 
 def _remove_specific_orders(solution: Solution, order_ids, dist_matrix, customer_pool):
     '''内部辅助函数：执行具体的订单移除操作'''
@@ -76,6 +41,10 @@ def _remove_specific_orders(solution: Solution, order_ids, dist_matrix, customer
                     if len(sublist) == 0:
                         route.orders.pop(sub_idx)
                         route.nodes.pop(sub_idx + 1)
+                    # 关键修复：清空旧的时间和距离记录，强制下次计算时重新推算最优出发时间
+                    route.times = []
+                    route.distance = []
+                    route.cost = 0
                     break
             if found: break
         solution.order2routeMap.pop(oid)
@@ -111,6 +80,9 @@ def worst_order_removal(solution: Solution, n_remove: int, dist_matrix, customer
                         temp_route.nodes.pop(sub_idx+1)
                     found = True; break
             if found: break
+        
+        # 清空 times，让 calc_route_total_cost 重新推算剩余节点的最优出发时间
+        temp_route.times = []
         new_cost = calc_route_total_cost(temp_route, dist_matrix, customer_pool) if temp_route.orders else 0
         contributions.append((oid, original_cost - new_cost))
     contributions.sort(key=lambda x: x[1], reverse=True)

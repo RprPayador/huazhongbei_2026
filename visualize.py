@@ -210,19 +210,127 @@ def plot_all(solution, customer_pool, save_path=None):
         plt.show()
 
 
-# ---- 独立运行入口（直接读取真实数据测试） ----
+def plot_from_txt(path='solution_output.txt'):
+    """
+    直接从 txt 文件读取解数据并弹出交互窗口，无需 Solution 对象或 Excel 文件。
+    """
+    from save_solution import load_solution_txt
+    data = load_solution_txt(path)
+
+    meta = data['meta']
+    customers_dict = data['customers']   # {cid: {'x', 'y', 'tw'}}
+    routes_list = data['routes']         # list of route dicts
+
+    print(f"[读取成功] 路径数={len(routes_list)}, 总费用={meta.get('total_cost', 'N/A'):.2f}")
+
+    fig1, ax1 = plt.subplots(figsize=(14, 12))
+    fig1.canvas.manager.set_window_title('车辆路径图')
+
+    # ── 路径图 ──────────────────────────────────────────────────
+    n_routes = len(routes_list)
+    colors = cm.tab20(np.linspace(0, 1, max(n_routes, 1)))
+
+    # 画所有客户点（灰色）
+    for cid, c in customers_dict.items():
+        if cid == 0:
+            continue
+        ax1.plot(c['x'], c['y'], 'o', color='#cccccc', markersize=4, zorder=1)
+        ax1.text(c['x'] + 0.3, c['y'] + 0.3, str(cid), fontsize=5, color='#aaaaaa', zorder=2)
+
+    # 画配送中心
+    depot = customers_dict.get(0)
+    if depot:
+        ax1.plot(depot['x'], depot['y'], '*', color='red', markersize=18, zorder=10, label='配送中心')
+        ax1.text(depot['x'] + 0.5, depot['y'] + 0.5, '配送中心',
+                 fontsize=9, color='red', fontweight='bold', zorder=11)
+
+    # 画每条路径
+    for r_idx, route in enumerate(routes_list):
+        color = colors[r_idx % len(colors)]
+        nodes = route.get('nodes', [])
+        xs = [customers_dict[n]['x'] for n in nodes if n in customers_dict]
+        ys = [customers_dict[n]['y'] for n in nodes if n in customers_dict]
+        for i in range(len(xs) - 1):
+            ax1.annotate('', xy=(xs[i+1], ys[i+1]), xytext=(xs[i], ys[i]),
+                         arrowprops=dict(arrowstyle='->', color=color, lw=1.0), zorder=5)
+        for n in nodes[1:-1]:
+            if n in customers_dict:
+                ax1.plot(customers_dict[n]['x'], customers_dict[n]['y'],
+                         'o', color=color, markersize=5, zorder=6)
+        if len(xs) > 2:
+            ax1.text(xs[1], ys[1] + 0.8, f"V{route.get('vehicle_id', r_idx)}",
+                     fontsize=5.5, color=color, fontweight='bold', zorder=7)
+
+    ax1.set_title(f"车辆路径图  (共 {n_routes} 条路径，总费用={meta.get('total_cost', 0):.1f})",
+                  fontsize=13, fontweight='bold')
+    ax1.set_xlabel('X (km)'); ax1.set_ylabel('Y (km)')
+    ax1.grid(True, linestyle='--', alpha=0.4)
+    ax1.set_aspect('equal', adjustable='box')
+    fig1.tight_layout()
+
+    # ── 排班甘特图（第二个独立窗口）───────────────────────────────
+    # 从路径数据重建车辆时间段
+    vid_tasks = {}   # {vehicle_id: [(start, end), ...]}
+    vid_type  = {}   # {vehicle_id: type_id}
+    for route in routes_list:
+        vid = route.get('vehicle_id')
+        t_id = route.get('vehicle_type', 1)
+        times = route.get('times', [])
+        if vid is None or len(times) < 2:
+            continue
+        vid_tasks.setdefault(vid, []).append((times[0], times[-1]))
+        vid_type[vid] = t_id
+
+    used_vids = sorted(vid_tasks.keys())
+    fig2, ax2 = plt.subplots(figsize=(16, max(6, len(used_vids) * 0.3 + 2)))
+    fig2.canvas.manager.set_window_title('车辆排班甘特图')
+    if not used_vids:
+        ax2.text(0.5, 0.5, '没有排班数据', ha='center', va='center',
+                 transform=ax2.transAxes, fontsize=14)
+    else:
+        def get_color(type_id):
+            return '#4e9af1' if type_id in [4, 5] else '#f4a261'
+
+        y_pos = {vid: i for i, vid in enumerate(used_vids)}
+        for vid in used_vids:
+            color = get_color(vid_type.get(vid, 1))
+            for (t_start, t_end) in vid_tasks[vid]:
+                dur = max(t_end - t_start, 1)
+                ax2.barh(y_pos[vid], dur, left=t_start, height=0.6,
+                         color=color, edgecolor='white', linewidth=0.5, alpha=0.85)
+                if dur > 30:
+                    ax2.text(t_start + dur / 2, y_pos[vid],
+                             f"{_minutes_to_hhmm(t_start)}-{_minutes_to_hhmm(t_end)}",
+                             ha='center', va='center', fontsize=5, color='white', fontweight='bold')
+
+        ax2.set_yticks(list(y_pos.values()))
+        ax2.set_yticklabels([f"车辆{v}" for v in used_vids], fontsize=6)
+        ax2.invert_yaxis()
+        ticks = list(range(0, 1441, 60))
+        ax2.set_xticks(ticks)
+        ax2.set_xticklabels([_minutes_to_hhmm(m) for m in ticks], rotation=45, fontsize=7)
+        ax2.set_xlim(420, 1440)
+        for s, e in [(420, 540), (1020, 1140)]:
+            ax2.axvspan(s, e, alpha=0.07, color='red')
+        ax2.grid(axis='x', linestyle='--', alpha=0.4)
+        ax2.set_xlabel('时间'); ax2.set_ylabel('车辆')
+        ax2.set_title(f'车辆排班甘特图  (共使用 {len(used_vids)} 辆车)', fontsize=13, fontweight='bold')
+
+        import matplotlib.patches as mpatches
+        ax2.legend(handles=[
+            mpatches.Patch(color='#4e9af1', label='新能源车'),
+            mpatches.Patch(color='#f4a261', label='燃油车'),
+            mpatches.Patch(color='red', alpha=0.15, label='高峰时段'),
+        ], loc='upper right', fontsize=8)
+
+    fig2.suptitle('ALNS 优化结果可视化', fontsize=14, fontweight='bold')
+    fig2.tight_layout()
+    plt.show()  # 两个窗口同时阻塞显示
+
+
+# ── 独立运行入口 ────────────────────────────────────────────────
 if __name__ == '__main__':
     import sys
-    import os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from main import init_data
-    from ALNS_tools import Solution
+    txt_path = sys.argv[1] if len(sys.argv) > 1 else 'solution_output.txt'
+    plot_from_txt(txt_path)
 
-    BASE_DIR = r'.\A题：城市绿色物流配送调度\附件'
-    customers, orders, vehicles, distances = init_data(BASE_DIR)
-
-    sol = Solution()
-    sol.initSolution(vehicles, customers, orders, distances)
-
-    print(f"初始解路径数: {len(sol.routes)}, 总费用: {sol.total_cost:.2f}")
-    plot_all(sol, customers, save_path='result_visualization.png')
