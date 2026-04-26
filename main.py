@@ -4,6 +4,7 @@ import os
 from VRTPW_class import Vehicle, Customer, Order, Route
 from ALNS_tools import Solution
 from RVPTW_ALNS import ALNS_Solver
+from save_solution import save_solution
 
 def time_to_minutes(time_str):
     """将时间字符串 (如 '8:30') 转换为分钟数"""
@@ -126,3 +127,6 @@ if __name__ == "__main__":
     print(f"  新能源车使用: {ev_count} 趟")
     print(f"  燃油车使用:   {fv_count} 趟")
     print("==================================")
+
+    # --- 保存结果 ---
+    save_solution(best_solution, customers, path='solution_output.txt')
