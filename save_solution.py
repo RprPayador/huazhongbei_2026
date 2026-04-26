@@ -94,6 +94,24 @@ def save_solution(solution, customer_pool, path='solution_output.txt'):
 # ─────────────────────────────────────────────
 
 def load_solution_txt(path='solution_output.txt'):
+    """
+    从 txt 文件读取解数据，返回 dict，结构如下：
+    {
+        'meta': {'total_cost': float, 'num_routes': int, ...},
+        'customers': {cid: {'x': float, 'y': float, 'tw': (float,float)}},
+        'routes': [
+            {
+                'vehicle_id': int,
+                'vehicle_type': int,
+                'route_cost': float,
+                'nodes': [int, ...],
+                'times': [float, ...],
+                'stops': [[{'order_id':int,'weight':float,'volume':float}, ...], ...]
+            }, ...
+        ],
+        'unassigned': [{'order_id':int,'customer_id':int,'weight':float,'volume':float}, ...]
+    }
+    """
     with open(path, 'r', encoding='utf-8') as f:
         raw = f.read()
 
@@ -103,45 +121,91 @@ def load_solution_txt(path='solution_output.txt'):
 
     for line in raw.splitlines():
         line = line.strip()
-        if not line or line.startswith('#'): continue
+        if not line or line.startswith('#'):
+            continue
 
-        if line == '[META]': section = 'meta'; continue
-        if line == '[CUSTOMER]': section = 'customer'; continue
-        if line == '[UNASSIGNED]': section = 'unassigned'; continue
+        # 识别块头
+        if line == '[META]':
+            section = 'meta'; continue
+        if line == '[CUSTOMER]':
+            section = 'customer'; continue
+        if line == '[UNASSIGNED]':
+            section = 'unassigned'; continue
         if line.startswith('[ROUTE_'):
-            if current_route: data['routes'].append(current_route)
-            current_route = {'stops': [], 'nodes': [], 'times': []}
+            if current_route is not None:
+                data['routes'].append(current_route)
+            current_route = {'stops': []}
             section = 'route'; continue
 
-        if section == 'meta' and '=' in line:
-            k, v = line.split('=', 1)
-            data['meta'][k] = float(v) if '.' in v else int(v)
-        elif section == 'customer':
-            p = line.split(',')
-            if len(p) >= 5:
-                cid = int(float(p[0]))
-                data['customers'][cid] = {'x': float(p[1]), 'y': float(p[2]), 'tw': (float(p[3]), float(p[4]))}
-        elif section == 'route' and current_route is not None:
-            if '=' in line:
-                k, v = line.split('=', 1)
-                if k == 'nodes': current_route['nodes'] = [int(float(n)) for n in v.split(',') if n]
-                elif k == 'times': current_route['times'] = [float(t) for t in v.split(',') if t]
-                elif k.startswith('stop_'):
-                    orders = []
-                    for part in v.split('|'):
-                        if not part: continue
-                        o_p = part.split(':')
-                        if len(o_p) == 3:
-                            orders.append({'order_id': int(float(o_p[0])), 'weight': float(o_p[1]), 'volume': float(o_p[2])})
-                    current_route['stops'].append(orders)
-                else:
-                    current_route[k] = float(v) if '.' in v else int(v)
-        elif section == 'unassigned':
-            p = line.split(',')
-            if len(p) == 4:
-                data['unassigned'].append({'order_id': int(float(p[0])), 'customer_id': int(float(p[1])), 'weight': float(p[2]), 'volume': float(p[3])})
+        # 解析键值对
+        if '=' not in line:
+            continue
+        key, val = line.split('=', 1)
 
-    if current_route: data['routes'].append(current_route)
+        if section == 'meta':
+            try:
+                data['meta'][key] = float(val) if '.' in val else int(val)
+            except ValueError:
+                data['meta'][key] = val
+
+        elif section == 'customer':
+            parts = val.split(',')
+            cid = int(parts[0])
+            data['customers'][cid] = {
+                'x': float(parts[1]),
+                'y': float(parts[2]),
+                'tw': (float(parts[3]), float(parts[4]))
+            }
+
+        elif section == 'route' and current_route is not None:
+            if key == 'nodes':
+                current_route['nodes'] = [int(n) for n in val.split(',') if n]
+            elif key == 'times':
+                current_route['times'] = [float(t) for t in val.split(',') if t]
+            elif key.startswith('stop_'):
+                stop_orders = []
+                for part in val.split('|'):
+                    if not part: continue
+                    oid, w, v2 = part.split(':')
+                    stop_orders.append({'order_id': int(oid),
+                                        'weight': float(w),
+                                        'volume': float(v2)})
+                current_route['stops'].append(stop_orders)
+            else:
+                try:
+                    current_route[key] = float(val) if '.' in val else int(val)
+                except ValueError:
+                    current_route[key] = val
+
+        elif section == 'unassigned':
+            parts = val.split(',')
+            # val 这里是整行（因为没有=），需要重新解析
+            # 实际上 unassigned 行格式是 "oid,cid,w,v"，没有 key=
+            pass
+
+    # 补最后一条路径
+    if current_route is not None:
+        data['routes'].append(current_route)
+
+    # 重新解析 unassigned（它的行没有 key=val 格式）
+    data['unassigned'] = []
+    in_unassigned = False
+    for line in raw.splitlines():
+        line = line.strip()
+        if line == '[UNASSIGNED]':
+            in_unassigned = True; continue
+        if line.startswith('[') and line != '[UNASSIGNED]':
+            in_unassigned = False
+        if in_unassigned and line and not line.startswith('#'):
+            parts = line.split(',')
+            if len(parts) == 4:
+                data['unassigned'].append({
+                    'order_id': int(parts[0]),
+                    'customer_id': int(parts[1]),
+                    'weight': float(parts[2]),
+                    'volume': float(parts[3])
+                })
+
     return data
 
 

@@ -242,13 +242,19 @@ class Solution:
                     # 添加路径到解决方案
                     self.routes.append(route)
 
+                    # --- 关键：立即同步真实时间 ---
+                    # 这一步会根据分段速度模型重写 route.times
+                    from VRTPW_class import calc_route_total_cost
+                    calc_route_total_cost(route, dist_matrix, customer_pool)
+
                     # 更新车辆属性
                     vehicle.current_weight = current_weight
                     vehicle.current_volume = current_volume
 
-                    # 更新车辆时间表
-                    self.vehiclesTimeTable[vehicle.vehicle_id].append((route.times[0], arrival_at_depot))
-                    available_time = arrival_at_depot
+                    # 更新车辆时间表（使用同步后的真实时间）
+                    self.vehiclesTimeTable.setdefault(vehicle.vehicle_id, []).append((route.times[0], route.times[-1]))
+                    
+                    available_time = route.times[-1] # 下一次的可用时间也用真实回程时间
                     route_index += 1
                     route_count += 1
                 else:

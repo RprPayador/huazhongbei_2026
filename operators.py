@@ -41,10 +41,6 @@ def _remove_specific_orders(solution: Solution, order_ids, dist_matrix, customer
                     if len(sublist) == 0:
                         route.orders.pop(sub_idx)
                         route.nodes.pop(sub_idx + 1)
-                    # 关键修复：清空旧的时间和距离记录，强制下次计算时重新推算最优出发时间
-                    route.times = []
-                    route.distance = []
-                    route.cost = 0
                     break
             if found: break
         solution.order2routeMap.pop(oid)
@@ -80,9 +76,6 @@ def worst_order_removal(solution: Solution, n_remove: int, dist_matrix, customer
                         temp_route.nodes.pop(sub_idx+1)
                     found = True; break
             if found: break
-        
-        # 清空 times，让 calc_route_total_cost 重新推算剩余节点的最优出发时间
-        temp_route.times = []
         new_cost = calc_route_total_cost(temp_route, dist_matrix, customer_pool) if temp_route.orders else 0
         contributions.append((oid, original_cost - new_cost))
     contributions.sort(key=lambda x: x[1], reverse=True)
