@@ -1,5 +1,6 @@
 '''ALNS(自适应大邻域搜索)算法模块'''
 
+import numpy as np
 from VRTPW_class import *
 import numpy as np
 import pandas as pd
