@@ -113,7 +113,7 @@ if __name__ == "__main__":
     # --- 启动 ALNS 优化 ---
     print("\n开始 ALNS 优化迭代...")
     solver = ALNS_Solver(solution, distances, customers, vehicles)
-    best_solution = solver.solve(max_iter=0, update_period=50)
+    best_solution = solver.solve(max_iter=1000, update_period=50)
 
     # --- 输出最终结果 ---
     print("\n========== 最终优化结果 ==========")
