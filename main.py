@@ -3,6 +3,7 @@ import numpy as np
 import os
 from VRTPW_class import Vehicle, Customer, Order, Route
 from ALNS_tools import Solution
+from RVPTW_ALNS import ALNS_Solver
 
 def time_to_minutes(time_str):
     """将时间字符串 (如 '8:30') 转换为分钟数"""
@@ -97,23 +98,31 @@ def init_vehicles():
 if __name__ == "__main__":
     BASE_DIR = r'.\A题：城市绿色物流配送调度\附件'
     customers, orders, vehicles, distances = init_data(BASE_DIR)
+
+    # --- 构建初始解 ---
+    print("\n正在构建初始解...")
     solution = Solution()
     solution.initSolution(vehicles, customers, orders, distances)
-    print(f"总路径数: {len(solution.routes)}")
-    print(f"未分配订单数: {len(solution.unassignedOrders)}")
-    print(f"已分配订单数: {len(solution.order2routeMap)}")
+    print(f"初始解构建完成：")
+    print(f"  总路径数:    {len(solution.routes)}")
+    print(f"  已分配订单: {len(solution.order2routeMap)}")
+    print(f"  未分配订单: {len(solution.unassignedOrders)}")
+    print(f"  初始总费用: {solution.total_cost:.2f}")
 
-    # 车辆使用统计
-    ev_count = 0
-    fv_count = 0
-    for route in solution.routes:
-        v = route.vehicle
-        if v.type_id in [4, 5]:
-            ev_count += 1
-        else:
-            fv_count += 1
+    # --- 启动 ALNS 优化 ---
+    print("\n开始 ALNS 优化迭代...")
+    solver = ALNS_Solver(solution, distances, customers, vehicles)
+    best_solution = solver.solve(max_iter=1000, update_period=50)
 
-    print(f"新能源车使用: {ev_count} 趟")
-    print(f"燃油车使用: {fv_count} 趟")
+    # --- 输出最终结果 ---
+    print("\n========== 最终优化结果 ==========")
+    print(f"  最优总费用:   {best_solution.total_cost:.2f}")
+    print(f"  总路径数:     {len(best_solution.routes)}")
+    print(f"  已分配订单:  {len(best_solution.order2routeMap)}")
+    print(f"  未分配订单:  {len(best_solution.unassignedOrders)}")
 
-    print('\nok')
+    ev_count = sum(1 for r in best_solution.routes if r.vehicle.type_id in [4, 5])
+    fv_count = len(best_solution.routes) - ev_count
+    print(f"  新能源车使用: {ev_count} 趟")
+    print(f"  燃油车使用:   {fv_count} 趟")
+    print("==================================")

@@ -12,6 +12,7 @@ class Solution:
         self.vehiclesTimeTable : dict[int, list[tuple]] = {} # 车辆时间表, key是车辆编号, value是车辆的时间表
         self.order2routeMap : dict[int, int] = {} # 订单到路径的映射, key是订单编号, value是routes的索引值
         self.unassignedOrders : list[Order] = [] # 未分配的订单列表
+        self.total_cost : float = 0.0 # 全局总费用
 
     def initSolution(self, vehicle_pool: list[Vehicle], customer_pool: dict[int, Customer], order_pool: list[Order], dist_matrix: np.ndarray):
         '''初始化解法函数：生成初始解
@@ -414,3 +415,13 @@ class Solution:
         print(f"总订单数: {total_orders}")
         print(f"已分配订单数: {len(self.order2routeMap)}")
         print(f"未分配订单数: {len(self.unassignedOrders)}")
+
+        # 重建 order2routeMap 并用真实计费函数算总费用
+        self.order2routeMap.clear()
+        dist_matrix_safe = np.nan_to_num(dist_matrix.astype(float))
+        for r_idx, route in enumerate(self.routes):
+            for sublist in route.orders:
+                for order in sublist:
+                    self.order2routeMap[order.order_id] = r_idx
+            calc_route_total_cost(route, dist_matrix_safe, customer_pool)
+        self.total_cost = sum(r.cost for r in self.routes)
