@@ -107,7 +107,7 @@ def solve_problem_2():
     print(f"估算总碳排放: {carbon_total:.2f}")
 
     # 保存解
-    save_solution(best_sol_p2, "solution_output_p2.txt")
+    save_solution(best_sol_p2, customers, "solution_output_p2.txt")
     print("\n结果已保存至 solution_output_p2.txt")
 
 if __name__ == "__main__":

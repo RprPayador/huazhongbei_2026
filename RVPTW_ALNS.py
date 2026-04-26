@@ -53,13 +53,12 @@ class ALNS_Solver:
             r_idx = self._select_operator(self.removal_weights)
             p_idx = self._select_operator(self.repair_weights)
             
-            # 对于 2000+ 规模的问题，一次移除 40-100 个订单（约 2%-5%）
-            # 配合 Regret 算子，这是效率和精度的平衡点
-            n_remove = random.randint(40, 100)
+            # 对于 2000+ 规模的问题，一次移除 20-30 个订单
+            n_remove = random.randint(20, 30)
             
             if self.removal_ops[r_idx] == route_removal:
-                # 路径移除：一次移除 2-4 条路径
-                self.removal_ops[r_idx](temp_sol, random.randint(2, 4), self.dist_matrix, self.customer_pool)
+                # 路径移除：一次移除 1-2 条路径
+                self.removal_ops[r_idx](temp_sol, random.randint(1, 2), self.dist_matrix, self.customer_pool)
             else:
                 self.removal_ops[r_idx](temp_sol, n_remove, self.dist_matrix, self.customer_pool)
             
@@ -93,7 +92,8 @@ class ALNS_Solver:
                     status = "SA_Acc"
             
             if i % 1 == 0: # 每一代输出
-                print(f"Iter {i:4d} | Cost={new_cost:9.2f} | Best={self.best_sol.total_cost:9.2f} | Routes={len(temp_sol.routes):3d} | Ops=({self.removal_op_names[r_idx]}+{self.repair_op_names[p_idx]}) | Status={status} | T={self.T:7.2f}")
+                new_unassigned = len(temp_sol.unassignedOrders)
+                print(f"Iter {i:4d} | Cost={new_cost:9.2f} | Best={self.best_sol.total_cost:9.2f} | Unasgn={new_unassigned:2d} | Routes={len(temp_sol.routes):3d} | Ops=({self.removal_op_names[r_idx]}+{self.repair_op_names[p_idx]}) | Status={status} | T={self.T:7.2f}")
 
             if score_type == 1:
                 self.removal_scores[r_idx] += self.theta1
@@ -152,42 +152,60 @@ class ALNS_Solver_P2:
             if r <= curr: return i
         return 0
 
-    def solve(self, max_iter=100):
+    def solve(self, max_iter=25):
         from operators import (
             random_order_removal, worst_order_removal, shaw_order_removal, route_removal,
             policy_violation_removal, greedy_repair_p2, regret_repair_p2, _rebuild_maps_and_costs
         )
         import copy, random
+        
+        repair_ops = [greedy_repair_p2, regret_repair_p2]
+        repair_names = ["Gred", "Regr"]
+        
         print(f"开始 P2 ALNS 提速优化，初始费用: {self.current_sol.total_cost:.2f}\n")
         for i in range(max_iter):
             temp_sol = copy.deepcopy(self.current_sol)
             if i == 0:
-                policy_violation_removal(temp_sol, self.customer_pool)
+                policy_violation_removal(temp_sol, self.customer_pool, self.dist_matrix)
                 greedy_repair_p2(temp_sol, self.dist_matrix, self.customer_pool, self.vehicle_pool)
-                r_name = "Policy"
+                op_tag = "Policy+Gred"
+                # 第 0 次修复后的解是第一个合法解，强制设为 Best
+                self.best_sol = copy.deepcopy(temp_sol)
+                self.current_sol = temp_sol
+                status = "INIT_P2"
+                new_cost = temp_sol.total_cost
             else:
                 r_idx = self._select_operator(self.removal_weights)
+                p_idx = self._select_operator(self.repair_weights)
+                
                 removal_ops = [random_order_removal, worst_order_removal, shaw_order_removal, route_removal]
                 r_name = self.removal_op_names[r_idx]
-                n_remove = random.randint(100, 250)
+                p_name = repair_names[p_idx]
+                op_tag = f"{r_name}+{p_name}"
+                
+                n_remove = random.randint(10, 30)
                 if removal_ops[r_idx] == route_removal:
-                    removal_ops[r_idx](temp_sol, 4, self.dist_matrix, self.customer_pool)
+                    # 每次仅移除 1 条路径，尽量不破坏大结构
+                    removal_ops[r_idx](temp_sol, 1, self.dist_matrix, self.customer_pool)
                 else:
                     removal_ops[r_idx](temp_sol, n_remove, self.dist_matrix, self.customer_pool)
-                greedy_repair_p2(temp_sol, self.dist_matrix, self.customer_pool, self.vehicle_pool)
+                
+                repair_ops[p_idx](temp_sol, self.dist_matrix, self.customer_pool, self.vehicle_pool)
 
-            _rebuild_maps_and_costs(temp_sol, self.dist_matrix, self.customer_pool)
-            new_cost = temp_sol.total_cost
-            if new_cost < self.best_sol.total_cost - 1e-3:
-                self.best_sol, self.current_sol = copy.deepcopy(temp_sol), temp_sol
-                status = "BEST  "
-            else:
-                delta = new_cost - self.current_sol.total_cost
-                if delta < 0 or random.random() < np.exp(-delta / self.T):
-                    self.current_sol = temp_sol
-                    status = "SA_Acc"
-                else: status = "Reject"
+                _rebuild_maps_and_costs(temp_sol, self.dist_matrix, self.customer_pool)
+                new_cost = temp_sol.total_cost
+                
+                if new_cost < self.best_sol.total_cost - 1e-3:
+                    self.best_sol, self.current_sol = copy.deepcopy(temp_sol), temp_sol
+                    status = "BEST  "
+                else:
+                    delta = new_cost - self.current_sol.total_cost
+                    if delta < 0 or random.random() < np.exp(-delta / self.T):
+                        self.current_sol = temp_sol
+                        status = "SA_Acc"
+                    else: status = "Reject"
 
-            print(f"Iter {i:4d} | Cost={new_cost:9.2f} | Best={self.best_sol.total_cost:9.2f} | Routes={len(temp_sol.routes):3d} | Op={r_name} | Status={status}")
+            new_unassigned = len(temp_sol.unassignedOrders)
+            print(f"Iter {i:4d} | Cost={new_cost:9.2f} | Best={self.best_sol.total_cost:9.2f} | Unasgn={new_unassigned:2d} | Routes={len(temp_sol.routes):3d} | Ops={op_tag} | Status={status}")
             self.T *= self.c
         return self.best_sol
